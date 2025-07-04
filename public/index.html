@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    
+    <meta
+      name="description"
+      content="Acil destek lazım | İhtiyacınız olan her türlü araç burada"
+    />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    
+    <!-- PDF.js Worker Yönetimi - Daha Güvenilir Sürüm -->
+    <script>
+      (function() {
+        // Global PDF worker state yönetimi
+        window.PDFJS_WORKER = {
+          initialized: false,
+          url: null,
+          lastReset: 0,
+          isResetting: false,
+          cooldownPeriod: 2000, // Worker resetleme arasındaki minimum süre (ms) - azaltıldı
+          workerPort: null,
+          initAttempts: 0,
+          maxInitAttempts: 3
+        };
+        
+        // Worker URL'i - CDN üzerinden, daha eski ve kararlı sürüm
+        window.pdfjsWorkerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js";
+        
+        // PDF.js ana kütüphane URL'i
+        window.pdfjsLibSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js";
+        
+        // Worker'ı güvenli şekilde başlat - yalnızca bir kez
+        window.initPdfWorker = function() {
+          // Zaten başlatılmışsa tekrar başlatma
+          if (window.PDFJS_WORKER.initialized && window.PDFJS_WORKER.workerPort) {
+            return true;
+          }
+          
+          // Maksimum deneme sayısını kontrol et
+          if (window.PDFJS_WORKER.initAttempts >= window.PDFJS_WORKER.maxInitAttempts) {
+            console.warn('PDF Worker başlatma maksimum deneme sayısına ulaşıldı');
+            return false;
+          }
+          
+          window.PDFJS_WORKER.initAttempts++;
+          
+          try {
+            // PDF.js kütüphanesi yüklü mü kontrol et
+            if (!window.pdfjsLib) {
+              console.warn('PDF.js kütüphanesi henüz yüklenmemiş, yükleniyor...');
+              
+              // Eğer kütüphane yoksa yükle
+              var script = document.createElement('script');
+              script.src = window.pdfjsLibSrc;
+              script.async = true;
+              script.onload = function() {
+                console.log('PDF.js kütüphanesi dinamik olarak yüklendi');
+                // Kütüphane yüklendikten sonra worker'ı başlat
+                setTimeout(window.initPdfWorker, 100);
+              };
+              document.head.appendChild(script);
+              
+              return false;
+            }
+            
+            if (!window.pdfjsLib.GlobalWorkerOptions) {
+              console.warn('PDF.js GlobalWorkerOptions bulunamadı');
+              return false;
+            }
+            
+            // Worker URL'ini ayarla (sadece bir kez)
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = window.pdfjsWorkerSrc;
+            
+            console.log('PDF Worker başlatıldı:', window.pdfjsWorkerSrc);
+            window.PDFJS_WORKER.initialized = true;
+            window.PDFJS_WORKER.url = window.pdfjsWorkerSrc;
+            
+            return true;
+          } catch (error) {
+            console.error('PDF Worker başlatma hatası:', error);
+            return false;
+          }
+        };
+        
+        // Worker'ı tamamen sıfırla - sadece ciddi hata durumlarında
+        window.resetPdfWorker = function() {
+          // Çok sık resetleme yapılmasını engelle
+          var now = Date.now();
+          if (now - window.PDFJS_WORKER.lastReset < window.PDFJS_WORKER.cooldownPeriod) {
+            console.log('PDF Worker son resetlemeden bu yana ' + 
+              ((now - window.PDFJS_WORKER.lastReset) / 1000).toFixed(1) + 
+              ' saniye geçti, minimum bekleme süresi: ' + 
+              (window.PDFJS_WORKER.cooldownPeriod / 1000) + ' saniye');
+            return false;
+          }
+          
+          // Zaten reset yapılıyorsa tekrar başlatma
+          if (window.PDFJS_WORKER.isResetting) {
+            console.log('PDF Worker zaten sıfırlanıyor, işlem atlanıyor');
+            return false;
+          }
+          
+          try {
+            window.PDFJS_WORKER.isResetting = true;
+            window.PDFJS_WORKER.lastReset = now;
+            window.PDFJS_WORKER.initialized = false;
+            
+            console.log('PDF Worker sıfırlanıyor...');
+            
+            // Worker varsa ve çalışıyorsa sonlandır
+            if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+              if (window.pdfjsLib.GlobalWorkerOptions.workerPort) {
+                try {
+                  window.pdfjsLib.GlobalWorkerOptions.workerPort.terminate();
+                  window.pdfjsLib.GlobalWorkerOptions.workerPort = null;
+                  window.PDFJS_WORKER.workerPort = null;
+                } catch (e) {
+                  console.warn('Worker sonlandırma hatası:', e);
+                }
+              }
+              
+              // Worker URL'ini tekrar ayarla
+              window.pdfjsLib.GlobalWorkerOptions.workerSrc = window.pdfjsWorkerSrc;
+              console.log('PDF Worker URL yeniden ayarlandı:', window.pdfjsWorkerSrc);
+            }
+            
+            // Reseti tamamla ve durumu güncelle
+            setTimeout(function() {
+              window.PDFJS_WORKER.isResetting = false;
+              // Worker'ı tekrar başlat
+              window.initPdfWorker();
+              console.log('PDF Worker sıfırlama tamamlandı');
+            }, 1000);
+            
+            return true;
+          } catch (error) {
+            console.error('PDF Worker sıfırlama hatası:', error);
+            
+            // Hata durumunda bile reset durumunu temizle
+            setTimeout(function() {
+              window.PDFJS_WORKER.isResetting = false;
+            }, 1000);
+            
+            return false;
+          }
+        };
+        
+        // Worker durumu izleme
+        window.getPdfWorkerStatus = function() {
+          return {
+            initialized: window.PDFJS_WORKER.initialized,
+            url: window.PDFJS_WORKER.url,
+            lastReset: window.PDFJS_WORKER.lastReset,
+            isResetting: window.PDFJS_WORKER.isResetting,
+            hasWorkerPort: window.pdfjsLib && 
+                          window.pdfjsLib.GlobalWorkerOptions && 
+                          window.pdfjsLib.GlobalWorkerOptions.workerPort !== null,
+            initAttempts: window.PDFJS_WORKER.initAttempts
+          };
+        };
+        
+        // Sayfa yüklendiğinde worker'ı otomatik başlat
+        document.addEventListener('DOMContentLoaded', function() {
+          setTimeout(function() {
+            window.initPdfWorker();
+          }, 500);
+        });
+      })();
+    </script>
+    
+    <!-- PDF.js Kütüphanesi - Daha Kararlı Sürüm -->
+    <script 
+      type="text/javascript"
+      src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js" 
+      crossorigin="anonymous"
+      onload="setTimeout(function() { window.initPdfWorker(); }, 100)"></script>
+    
+    <!-- PDF-LIB Kütüphanesi - Asenkron -->
+    <script 
+      type="text/javascript"
+      src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.js" 
+      crossorigin="anonymous"></script>
+
+    <!-- SEO Meta Tags -->
+    <meta name="keywords" content="acil destek, yardım, profesyonel destek, acil hizmetler" />
+    <meta property="og:title" content="Acil Destek Lazım" />
+    <meta property="og:description" content="İhtiyacınız olan profesyonel çözümler burada" />
+    <meta property="og:image" content="%PUBLIC_URL%/og-image.jpg" />
+    <meta property="og:url" content="https://acilldesteklazim.com" />
+    <meta property="og:type" content="website" />
+    
+    <title>Lazım Saburada</title>
+  </head>
+  <body>
+    <noscript>Bu uygulamayı çalıştırmak için JavaScript'i etkinleştirmeniz gerekiyor.</noscript>
+    <div id="root"></div>
+    <!--
+      Bu HTML dosyası, React uygulamanızın çalışması için bir şablondur.
+      Uygulamanız doğrudan buraya yüklenir ve React tarafından yönetilir.
+    -->
+  </body>
+</html> 
